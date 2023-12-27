@@ -1,8 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
-# from simple_version_control import SimpleVersionControl  # Assuming you saved the version control code in a file named simple_version_control.py
 import shutil
 import hashlib
 import json
@@ -59,13 +58,13 @@ def main():
     elif command == "log":
         svc.log()
     elif command == "checkout":
+
         if len(sys.argv) < 3:
             print("Error: Please provide a commit hash to checkout.")
             sys.exit(1)
-        # Working on it
-        # elif not os.path.exists(os.path.join(".tico",sys.argv[2])):
-        #     print("Error: Please recheck your Hash")
-        #     sys.exit(1)    
+        elif not os.path.exists(os.path.join(os.path.join(".tico","objects"),sys.argv[2])):
+            print("Error: Please recheck your Hash")
+            sys.exit(1)
         svc.delete_files_except_svc()
         commit_to_checkout = sys.argv[2]
         svc.checkout(commit_to_checkout)
