@@ -1,0 +1,353 @@
+#!/usr/bin/env python
+
+import os
+import sys
+# from simple_version_control import SimpleVersionControl  # Assuming you saved the version control code in a file named simple_version_control.py
+import shutil
+import hashlib
+import json
+import datetime
+
+def print_help():
+    print("Tico - A Version Control System")
+    print("Usage:")
+    print("  tico init                - Initialize a new Tico repository")
+    print("  tico add <file>          - Add a file to the index")
+    print("  tico commit -m <message> - Commit changes with a message")
+    print("  tico log                 - Display commit log")
+    print("  tico checkout <commit>   - Checkout a specific commit")
+    print("  tico help                - to see this usage help")
+    print("  tico status              - to see status")
+    print("  tico user show           - to see present user (default username is naveen)")
+    print("  tico user set <username> - to change user")
+    print("  tico push <path>         - to push your file to another folder")
+    print()
+    print("Created by - Naveen Pal")
+    print()
+
+
+def main():
+    if len(sys.argv) < 2:
+        print_help()
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    if command == "init":
+        svc.init()
+        print("Initialized empty Tico repository in ")
+        os.system("pwd")
+    elif command == "add":
+        if len(sys.argv) < 3:
+            print("Error: Please provide a file to add.")
+            sys.exit(1)
+        elif not os.path.exists(sys.argv[2]):
+            print("Error: Please recheck your filename")
+            sys.exit(1)
+        file_to_add = sys.argv[2]
+        svc.add(file_to_add)
+        print(f"Added {file_to_add}, Successfully.")
+    elif command == "commit":
+        if "-m" not in sys.argv:
+            print("Error: Please provide a commit message using -m.")
+            sys.exit(1)
+        message_index = sys.argv.index("-m") + 1
+        message = sys.argv[message_index]
+        author = svc.current_user()
+        svc.commit(message, author ) 
+        print("Committed Successfully")
+    elif command == "log":
+        svc.log()
+    elif command == "checkout":
+        if len(sys.argv) < 3:
+            print("Error: Please provide a commit hash to checkout.")
+            sys.exit(1)
+        # Working on it
+        # elif not os.path.exists(os.path.join(".tico",sys.argv[2])):
+        #     print("Error: Please recheck your Hash")
+        #     sys.exit(1)    
+        svc.delete_files_except_svc()
+        commit_to_checkout = sys.argv[2]
+        svc.checkout(commit_to_checkout)
+        print(f"Checked out commit: {commit_to_checkout}")
+
+    elif command == "status":
+        current_branch = "main"  # Use 'main' instead of 'master'
+        head_commit = svc._get_head_commit(current_branch)
+        index_changes = svc.get_index_changes()
+        working_directory_changes = svc.get_working_directory_changes()
+
+        print("On branch", current_branch)
+        print("Changes to be committed:")
+        for file_path, obj_hash in index_changes.items():
+            print(f"  {file_path}: {obj_hash}")
+
+        print("\nUntracked files:")
+        for file_path in working_directory_changes["untracked"]:
+            print(f"  {file_path}")
+
+        print("\nChanges not staged for commit:")
+        for file_path, obj_hash in working_directory_changes["modified"].items():
+            print(f"  {file_path}: {obj_hash}")
+        print()
+        # print("\nNo changes added to commit (use 'tico add <file>' and 'tico commit')")
+
+    elif command == "help":
+        print_help()
+        
+    elif command == "user":
+        if sys.argv[2] == "set":
+            svc._user_change(sys.argv[3])
+            print(f"\nYour username is {svc.current_user()}")
+        elif sys.argv[2] == "show":
+            print(f"\nYour username is {svc.current_user()}")
+    
+    elif command == "push":
+        svc.push(sys.argv[2])
+        print(f"Successfully pushed all files to {sys.argv[2]}")
+        
+    else:
+        print(f"Error: Unknown command '{command}'.")
+        print_help()
+        sys.exit(1)
+
+class SimpleVersionControl:
+    def init(self, repo_path=".tico"):
+        self.repo_path = repo_path
+        self.index_file = os.path.join(repo_path, "index.json")
+        self.objects_path = os.path.join(repo_path, "objects")
+        self.branches_path = os.path.join(repo_path, "branches")
+        self.user_file = os.path.join(repo_path, "users.txt")
+        
+
+        self._initialize_repo()
+
+    def _initialize_repo(self):
+        # Create the repository directory if it doesn't exist
+        if not os.path.exists(self.repo_path):
+            os.makedirs(self.repo_path)
+
+        # Create the objects directory for storing file content
+        if not os.path.exists(self.objects_path):
+            self.objects_path = os.path.join(".tico", "objects")
+            os.makedirs(self.objects_path)
+
+        # Create the branches directory
+        if not os.path.exists(self.branches_path):
+            os.makedirs(self.branches_path)
+
+        # Initialize a default branch
+        self._create_branch("main")
+
+        # Initialize the index file
+        if not os.path.exists(self.index_file):
+            with open(self.index_file, "w") as index:
+                json.dump({}, index)
+        
+        # Initialize the user file
+        if not os.path.exists(self.user_file):
+            with open(self.user_file, "w") as user_data:
+                user_data.write("\n2023-12-26 19:10:00 naveen")
+
+    def _user_change(self, user_name):
+        self.user_file = os.path.join(".tico", "users.txt")
+        with open(self.user_file, "a") as user:
+            date_time = (datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S") 
+            userdata=date_time+" "+user_name
+            user.write("\n"+userdata)
+            
+    def _create_branch(self, branch_name):
+        self.branches_path = os.path.join(".tico", "branches")
+        branch_path = os.path.join(self.branches_path, branch_name)
+        if not os.path.exists(branch_path):
+            os.makedirs(branch_path)
+
+        # Create a branch file to store the latest commit hash
+        branch_file = os.path.join(branch_path, "HEAD")
+        with open(branch_file, "w") as head_file:
+            head_file.write("")
+
+    def _get_head_commit(self, branch_name):
+        self.branches_path = os.path.join(".tico", "branches")
+        branch_path = os.path.join(self.branches_path, branch_name)
+        branch_file = os.path.join(branch_path, "HEAD")
+        with open(branch_file, "r") as head_file:
+            return head_file.read().strip()
+
+    def _update_head_commit(self, branch_name, commit_hash):
+        self.branches_path = os.path.join(".tico", "branches")
+        branch_path = os.path.join(self.branches_path, branch_name)
+        branch_file = os.path.join(branch_path, "HEAD")
+        with open(branch_file, "a") as head_file:
+            head_file.write(commit_hash+"\n")
+
+    def _get_object_path(self, obj_hash):
+        self.objects_path = os.path.join(".tico", "objects")
+        return os.path.join(self.objects_path, obj_hash)
+
+    def _get_object_hash(self, content):
+        return hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+    def _save_object(self, content):
+        obj_hash = self._get_object_hash(content)
+        obj_path = self._get_object_path(obj_hash)
+
+        if not os.path.exists(obj_path):
+            with open(obj_path, "w") as obj_file:
+                obj_file.write(content)
+
+        return obj_hash
+
+    def _read_object(self, obj_hash):
+        obj_path = self._get_object_path(obj_hash)
+        with open(obj_path, "r") as obj_file:
+            return obj_file.read()
+
+    def add(self, file_path):
+        self.index_file = os.path.join(".tico", "index.json")
+        
+        with open(file_path, "r") as file:
+            content = file.read()
+            obj_hash = self._save_object(content)
+
+        with open(self.index_file, "r") as index_file:
+            index = json.load(index_file)
+
+        index[file_path] = obj_hash
+
+        with open(self.index_file, "w") as index_file:
+            json.dump(index, index_file)
+
+    def commit(self, message, author):
+        self.index_file = os.path.join(".tico", "index.json")
+        with open(self.index_file, "r") as index_file:
+            index = json.load(index_file)
+
+        if not index:
+            print("Nothing to commit.")
+            return
+
+        commit_data = {
+            "message": message,
+            "author": author,
+            "timestamp": str(datetime.datetime.now()),
+            "changes": index,
+        }
+
+        commit_content = json.dumps(commit_data, sort_keys=True)
+        commit_hash = self._save_object(commit_content)
+
+        current_branch = "main"  # For simplicity, always commit to the main branch
+        head_commit = self._get_head_commit(current_branch)
+
+        # Update the branch's HEAD to point to the new commit
+        self._update_head_commit(current_branch, commit_hash)
+        print(f"Commit hash: {commit_hash}")
+
+    def log(self):
+        current_branch = "main"  # For simplicity, always show log for the main branch
+        head_all = self._get_head_commit(current_branch).split("\n")
+
+        for head_commit in head_all:
+
+            commit_content = self._read_object(head_commit).strip()
+            commit_data = json.loads(commit_content)
+            print(f"Commit: {head_commit}")
+            print(f"Author: {commit_data['author']}")
+            print(f"Timestamp: {commit_data['timestamp']}")
+            print(f"Message: {commit_data['message']}")
+            print("Changes:")
+            for file_path, obj_hash in commit_data["changes"].items():
+                print(f"  {file_path}: {obj_hash}")
+            print()
+            head_commit = commit_data.get("parent")
+
+    def checkout(self, commit_hash):
+        # For simplicity, checkout only works for the current branch (main)
+        current_branch = "main"
+        self._update_head_commit(current_branch, commit_hash)
+
+        # Restore files from the given commit
+        commit_content = self._read_object(commit_hash)
+        commit_data = json.loads(commit_content)
+
+        for file_path, obj_hash in commit_data["changes"].items():
+            obj_content = self._read_object(obj_hash)
+            with open(file_path, "w") as file:
+                file.write(obj_content)
+
+    def get_index_changes(self):
+        self.index_file = os.path.join(".tico", "index.json")
+        with open(self.index_file, "r") as index_file:
+            return json.load(index_file)
+
+    def get_working_directory_changes(self):
+        working_directory_changes = {"untracked": [], "modified": {}}
+        for file_path in os.listdir(".") :
+            if file_path != ".tico":
+                if file_path not in self.get_index_changes():
+                    working_directory_changes["untracked"].append(file_path)
+                elif self.file_changed(file_path):
+                    obj_hash = self._get_object_hash(open(file_path, "r").read())
+                    working_directory_changes["modified"][file_path] = obj_hash
+
+        return working_directory_changes
+
+    def file_changed(self, file_path):
+        index_hash = self.get_index_changes().get(file_path)
+        with open(file_path, "r") as file:
+            current_hash = self._get_object_hash(file.read())
+        return index_hash != current_hash
+    
+    def current_user(self):
+        self.user_file = os.path.join(".tico", "users.txt")
+        with open(self.user_file, "r") as user_data:
+            cuser=user_data.readlines()[-1].strip().split()[-1]
+            return cuser
+    def delete_files_except_svc(self):
+    # Get the current directory
+        current_directory = os.getcwd()
+
+        # List all files and folders in the current directory
+        files_and_folders = os.listdir(current_directory)
+
+        # Delete all files and folders except for .tico
+        for item in files_and_folders:
+            if item != ".tico":
+                item_path = os.path.join(current_directory, item)
+                if os.path.isfile(item_path):
+                    # Delete file
+                    os.remove(item_path)
+                elif os.path.isdir(item_path):
+                    # Delete folder and its contents
+                    shutil.rmtree(item_path)
+    def push(self,destination_directory):
+        # Get the current directory
+        current_directory = os.getcwd()
+        # Create the destination directory
+        os.makedirs(destination_directory, exist_ok=True)
+        # List all files and folders in the current directory
+        files_and_folders = os.listdir(current_directory)
+        # Copy all files except .tico to the destination directory
+        for item in files_and_folders:
+            if item != ".tico":
+                item_path = os.path.join(current_directory, item)
+                destination_item_path = os.path.join(destination_directory, item)
+
+                if os.path.isfile(item_path):
+                    # Copy file
+                    shutil.copy2(item_path, destination_item_path)
+                    print(f"Copied file: {item} to {destination_directory}")
+                elif os.path.isdir(item_path):
+                    # Copy folder and its contents
+                    shutil.copytree(item_path, destination_item_path)
+                    print(f"Copied folder: {item} to {destination_directory}")
+
+if __name__ == "__main__":
+    svc = SimpleVersionControl()
+    main()
+    if not svc.current_user:
+        svc._user_change("naveen")
+    
+
+
