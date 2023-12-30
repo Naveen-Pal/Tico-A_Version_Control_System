@@ -6,6 +6,8 @@ Usage:<br>
 &emsp;tico init                - Initialize a new Tico repository<br>
 &emsp;tico add <file>          - Add a file to the index<br>
 &emsp;tico commit -m <message> - Commit changes with a message<br>
+&emsp;tico rmadd <file>        - remove a file from the index<br>
+&emsp;tico rmcommit            - remove last commit<br>
 &emsp;tico log                 - Display commit log<br>
 &emsp;tico checkout <commit>   - Checkout a specific commit<br>
 &emsp;tico help                - to see this usage help<br>
