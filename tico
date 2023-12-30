@@ -36,14 +36,14 @@ def main():
 
     if command == "init":
         svc.init()
-        print("Initialized empty Tico repository in ")
-        os.system("pwd")
+        print(f"Initialized empty Tico repository in {os.getcwd()}")
+         
     elif command == "add":
         if len(sys.argv) < 3:
             print("Error: Please provide a file to add.")
             sys.exit(1)
         elif not os.path.exists(sys.argv[2]):
-            print("Error: Please recheck your filename")
+            print(f"Error: Your filename({sys.argv[2]}) does not exist")
             sys.exit(1)
         file_to_add = sys.argv[2]
         svc.add(file_to_add)
@@ -78,10 +78,18 @@ def main():
         elif not os.path.exists(os.path.join(os.path.join(".tico","objects"),sys.argv[2])):
             print("Error: Please recheck your Hash")
             sys.exit(1)
-        svc.delete_files_except_svc()
-        commit_to_checkout = sys.argv[2]
-        svc.checkout(commit_to_checkout)
-        print(f"Checked out commit: {commit_to_checkout}")
+        
+        ans=input("Are you sure to checkout this will replace your files? (y- to replace file, n- to cancel checkout): ")
+        if ans=='yes' or ans=="y":
+            commit_to_checkout = sys.argv[2]
+            svc.checkout(commit_to_checkout)
+            print(f"Checked out commit: {commit_to_checkout}")
+        elif ans=="no" or ans=="n":
+            sys.exit()
+        else:
+            print(f"Invalid arguement: {ans}")
+            sys.exit(1)
+
 
     elif command == "status":
         current_branch = "main"  # Use 'main' instead of 'master'
@@ -90,17 +98,24 @@ def main():
         working_directory_changes = svc.get_working_directory_changes()
 
         print("On branch", current_branch)
-        print("Changes to be committed:")
-        for file_path, obj_hash in index_changes.items():
-            print(f"  {file_path}: {obj_hash}")
+        if not svc.file_status("all"):
+            print("\nnothing to commit (create/copy files and use 'tico add' to track)")
+            
+        if not index_changes=={}:
+            print("\nChanges to be committed:")
+            for file_path, obj_hash in index_changes.items():
+                print(f"  {file_path}: {obj_hash}")
+            
+        if not working_directory_changes["untracked"]==[]:
+            print("\nUntracked files:")
+            for file_path in working_directory_changes["untracked"]:
+                print(f"  {file_path}")
+                
+        if not working_directory_changes["modified"] == {}:
+            print("\nChanges not staged for commit:")
+            for file_path, obj_hash in working_directory_changes["modified"].items():
+                print(f"  {file_path}: {obj_hash}")
 
-        print("\nUntracked files:")
-        for file_path in working_directory_changes["untracked"]:
-            print(f"  {file_path}")
-
-        print("\nChanges not staged for commit:")
-        for file_path, obj_hash in working_directory_changes["modified"].items():
-            print(f"  {file_path}: {obj_hash}")
         print()
         # print("\nNo changes added to commit (use 'tico add <file>' and 'tico commit')")
 
@@ -128,6 +143,7 @@ class SimpleVersionControl:
         self.repo_path = repo_path
         self.index_file = os.path.join(repo_path, "index.json")
         self.added_file = os.path.join(repo_path, "added.json")
+        self.modified_file = os.path.join(repo_path, "modified.json")
         self.objects_path = os.path.join(repo_path, "objects")
         self.branches_path = os.path.join(repo_path, "branches")
         self.user_file = os.path.join(repo_path, "users.txt")
@@ -152,20 +168,20 @@ class SimpleVersionControl:
         # Initialize a default branch
         self._create_branch("main")
 
-        # Initialize the index file
-        if not os.path.exists(self.index_file):
-            with open(self.index_file, "w") as index:
-                json.dump({}, index)
-                
-        # Initialize the added file
-        if not os.path.exists(self.added_file):
-            with open(self.added_file, "w") as added:
-                json.dump({}, added)        
+        # Initialize the index, added and modified file
+        for file in [self.index_file,self.added_file,self.modified_file]:
+            if not os.path.exists(file):
+                with open(file, "w") as index:
+                    json.dump({}, index)      
         
         # Initialize the user file
         if not os.path.exists(self.user_file):
+            user_name = input("please set your username: ")
+            if user_name == "":
+                user_name = "Unknown"
+            date_time = (datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S") 
             with open(self.user_file, "w") as user_data:
-                user_data.write("\n2023-12-26 19:10:00 naveen")
+                user_data.write(f"\n {date_time} {user_name}")
 
     def _user_change(self, user_name):
         self.user_file = os.path.join(".tico", "users.txt")
@@ -182,8 +198,9 @@ class SimpleVersionControl:
 
         # Create a branch file to store the latest commit hash
         branch_file = os.path.join(branch_path, "HEAD")
-        with open(branch_file, "w") as head_file:
-            head_file.write("")
+        if not os.path.exists(branch_file):
+            with open(branch_file, "w") as head_file:
+                head_file.write("")
 
     def _get_head_commit(self, branch_name):
         self.branches_path = os.path.join(".tico", "branches")
@@ -222,23 +239,26 @@ class SimpleVersionControl:
             return obj_file.read()
 
     def add(self, file_path):
-        self.index_file = os.path.join(".tico", "index.json")
-        self.added_file = os.path.join(".tico", "added.json")
-        
         with open(file_path, "r") as file:
             content = file.read()
             obj_hash = self._save_object(content)
-        files=[self.index_file,self.added_file]
+        files=["index.json","added.json"]
         for file in files:
-            with open(file, "r") as index_file:
+            svc._update_json(file_path,obj_hash,file,"a")
+
+    def _update_json(self,file_path,obj_hash,json_file,m):
+        json_file = os.path.join(".tico", json_file)
+        if not m=="w":
+            with open(json_file, "r") as index_file:
                 index = json.load(index_file)
+        else:
+            index={}
+            
+        index[file_path] = obj_hash
 
-            index[file_path] = obj_hash
-
-            with open(file, "w") as index_file:
-                json.dump(index, index_file)
-
-                      
+        with open(json_file, "w") as index_file:
+            json.dump(index, index_file)
+            
     def commit(self, message, author):
         self.index_file = os.path.join(".tico", "index.json")
         self.added_file = os.path.join(".tico", "added.json")
@@ -318,6 +338,9 @@ class SimpleVersionControl:
     def log(self):
         current_branch = "main"  # For simplicity, always show log for the main branch
         head_all = self._get_head_commit(current_branch).split("\n")
+        if head_all==[""]:
+            print("Nothing to show in log")
+            sys.exit()
 
         for head_commit in head_all:
 
@@ -345,8 +368,11 @@ class SimpleVersionControl:
         # Restore files from the given commit
         commit_content = self._read_object(commit_hash)
         commit_data = json.loads(commit_content)
+        
+        svc._update_json("","","index.json","w")
 
-        for file_path, obj_hash in commit_data["changes"].items():
+        for file_path, obj_hash in commit_data["all"].items():
+            svc._update_json(file_path,obj_hash,"index.json","a")
             obj_content = self._read_object(obj_hash)
             with open(file_path, "w") as file:
                 file.write(obj_content)
@@ -370,7 +396,7 @@ class SimpleVersionControl:
                 elif self.file_changed(file_path):
                     obj_hash = self._get_object_hash(open(file_path, "r").read())
                     working_directory_changes["modified"][file_path] = obj_hash
-
+                    svc.add(file_path)
         return working_directory_changes
 
     def file_changed(self, file_path):
@@ -384,6 +410,20 @@ class SimpleVersionControl:
         with open(self.user_file, "r") as user_data:
             cuser=user_data.readlines()[-1].strip().split()[-1]
             return cuser
+    def file_status(self,m):
+        current_branch = "main"  # Use 'main' instead of 'master'
+        head_commit = svc._get_head_commit(current_branch)
+        index_changes = svc.get_added_files()
+        working_directory_changes = svc.get_working_directory_changes()
+        if m=="all":
+            return index_changes != {} or working_directory_changes["untracked"] != [] or working_directory_changes["modified"] != {}
+        elif m=="added":
+            return index_changes != {}
+        elif m=="untracked":
+            return working_directory_changes["untracked"] != []
+        elif m=="modified":
+            return working_directory_changes["modified"] != {}
+            
     def delete_files_except_svc(self):
     # Get the current directory
         current_directory = os.getcwd()
@@ -426,8 +466,6 @@ class SimpleVersionControl:
 if __name__ == "__main__":
     svc = SimpleVersionControl()
     main()
-    if not svc.current_user:
-        svc._user_change("naveen")
-    
+
 
 
