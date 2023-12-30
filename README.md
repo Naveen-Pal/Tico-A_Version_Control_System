@@ -1,8 +1,5 @@
 # Tico - A Version Control System
 
-features required to add:
--> remove added files
--> remove added commits
 
 Usage:<br>
 <br>
